@@ -1,0 +1,110 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: customerservice
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: customer-deployment
+    spec:
+      containers:
+      - name: customerservice-java
+        image: customerservice-java:latest
+        ports:
+          - containerPort: 9080
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: MONGO_HOST
+          value: customer-db
+        - name: SECURE_SERVICE_CALLS
+          value: 'true'
+        - name: MB_KEYSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mb-keystore-password
+              key: password
+        - name: MB_TRUSTSTORE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mb-truststore-password
+              key: password
+        volumeMounts:
+          - name: keystores
+            mountPath: /etc/wlp/config/keystore
+            readOnly: true
+          - name: truststores
+            mountPath: /etc/wlp/config/truststore
+            readOnly: true
+          - name: liberty-config
+            mountPath: /config/configDropins
+      volumes:
+        - name: keystores
+          secret:
+            secretName: mb-keystore
+        - name: truststores
+          secret:
+            secretName: mb-truststore
+        - name: liberty-config
+          configMap:
+            name: liberty-logging-config
+            items:
+              - key: keystore.xml
+                path: defaults/keystore.xml
+              - key: logging.xml
+                path: defaults/logging.xml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-service
+  namespace: default
+spec:
+  ports:
+    - port: 9080
+  selector:
+    name: customer-deployment
+---
+##### Customer Database #####
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    service: customer-db
+  name: customer-db
+spec:
+  ports:
+  - name: "27017"
+    port: 27017
+    protocol: TCP
+    targetPort: 27017
+  selector:
+    service: customer-db
+status:
+  loadBalancer: {}
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  name: customer-db
+spec:
+  replicas: 1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        service: customer-db
+    spec:
+      containers:
+      - image: mongo
+        name: customer-db
+        ports:
+        - containerPort: 27017
+          protocol: TCP
+        resources: {}
+      restartPolicy: Always
+status: {}
